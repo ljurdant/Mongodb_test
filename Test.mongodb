@@ -24,7 +24,7 @@ db.bookings.insertMany([
     },
     {
         '_id': 2,
-        'HT': 60,
+		'HT': 36,
         'TVA':9,
         'services': {
             'HT': 8,
@@ -41,7 +41,13 @@ db.bookings.insertMany([
             'TVA': 10.05,
             'Quantity':8
         }
-    }    
+    },
+	{
+        '_id': 4,
+        'HT': 14,
+        'TVA': 2.1,
+    }  ,
+
 ]);
 
 // Run a find command to view items sold on April 4th, 2014.
@@ -54,25 +60,46 @@ db.bookings.insertMany([
 // ];
 
 const aggregation = [
-    
+	{$addFields:{ TTC:{"$add":["$HT", "$TVA"]}}},
+    {$sort: {TTC: 1}},
     { $group: {
         _id: null,
         //Le nombre total de bookings présents en base
-        BookingsCount: {
-            $sum: 1,
-        },
+        BookingsCount: { $sum: 1, },
         //Le chiffre d’affaire HT
-        HTprofit: {
-            $sum: '$HT',
-        },
+        HTprofit: { $sum: '$HT', },
         //Le panier moyen HT
-        HTAverage: {
-            $avg: '$HT'
-        }
-        ServicesTotal: {
-            
-        }
-    }}
+        HTAverage: { $avg: '$HT' },
+		//Le nombre total de services complémentaires commandés, tout booking confondu
+		TotalServicesOrdered: { $sum: '$services.Quantity' },
+		//Le nombre moyen de services complémentaires commandés par booking
+		AverageServicesOrdered: { $avg: { $cond: ['$services.Quantity', "$services.Quantity", 0]} },
+		
+		BookingsWithServices: { $sum: { $cond: ['$services.Quantity', 1, 0]} },
+		BookingsWithoutServices: { $sum: { $cond: ['$services.Quantity', 0, 1]} },
+		TTCs: {$push: "$TTC"}
+	}},
+	{$project: {
+		BookingsCount: 1,
+		HTprofit: 1,
+		HTAverage:1,
+		TotalServicesOrdered:1, 
+		AverageServicesOrdered: 1,
+		//Le ratio de booking sans et avec services complémentaires
+		ServicesRatio: { $divide: [ "$BookingsWithoutServices", "$BookingsWithServices" ]},
+		//Le prix TTC médian des bookings
+		TTCMedian: {
+			$cond: [{$eq: [{$mod: ["$BookingsCount", 2]}, 0]},
+			{$divide: [
+				{$add: [
+					{"$arrayElemAt": ["$TTCs", {$divide: ["$BookingsCount", 2]}]},
+					{"$arrayElemAt": ["$TTCs", {$subtract: [{$divide: ["$BookingsCount", 2]}, 1]}]}
+				]}
+			, 2]},
+			{"$arrayElemAt": ["$TTCs", {$trunc: {$divide: ["$BookingsCount", 2]}}]}
+		]},
+	}},
+	
 ]
 
 // Run the aggregation and open a cursor to the results.
